@@ -1,0 +1,70 @@
+dist:
+  name: otelcol-dev
+  description: OpenTelemetry Collector distribution with StarRocks exporter
+  output_path: ./otelcol-dev
+  version: 1.0.0
+
+exporters:
+  # StarRocks exporter
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/starrocksexporter v0.142.0
+  # Debug exporter for testing
+  - gomod:
+      go.opentelemetry.io/collector/exporter/debugexporter v0.142.0
+  # OTLP exporter for forwarding
+  - gomod:
+      go.opentelemetry.io/collector/exporter/otlpexporter v0.142.0
+
+processors:
+  # Batch processor for efficient batching
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor v0.142.0
+  # Memory limiter to prevent OOM
+  - gomod:
+      go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.142.0
+  # Resource processor for adding/modifying resource attributes
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.142.0
+  # Attributes processor for modifying telemetry attributes
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.142.0
+  # Resource detection processor for automatic environment detection
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.142.0
+  # Filter processor for filtering telemetry data
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.142.0
+  # Transform processor for advanced telemetry transformations
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.142.0
+
+receivers:
+  # OTLP receiver to receive telemetry data
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver v0.142.0
+
+extensions:
+  # Health check extension for monitoring collector health
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.142.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.18.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.18.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.18.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.18.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.18.0
+
+# Replace directives to use local StarRocks exporter from contrib repo
+# Paths are relative to the output directory (otelcol-dev)
+replaces:
+  - github.com/open-telemetry/opentelemetry-collector-contrib/exporter/starrocksexporter => ../opentelemetry-collector-contrib/exporter/starrocksexporter
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor => ../opentelemetry-collector-contrib/processor/resourceprocessor
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor => ../opentelemetry-collector-contrib/processor/attributesprocessor
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor => ../opentelemetry-collector-contrib/processor/resourcedetectionprocessor
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor => ../opentelemetry-collector-contrib/processor/filterprocessor
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor => ../opentelemetry-collector-contrib/processor/transformprocessor
+  - github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension => ../opentelemetry-collector-contrib/extension/healthcheckextension
+  - github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal => ../opentelemetry-collector-contrib/internal/coreinternal
+  - github.com/open-telemetry/opentelemetry-collector-contrib/internal/common => ../opentelemetry-collector-contrib/internal/common
+  - github.com/open-telemetry/opentelemetry-collector-contrib/internal/healthcheck => ../opentelemetry-collector-contrib/internal/healthcheck

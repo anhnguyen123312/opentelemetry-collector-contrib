@@ -1,0 +1,202 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Memory limiter - MUST be first
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # Resource detection - automatically detect namespace and add attributes
+  resourcedetection:
+    detectors:
+      - env
+      - system
+    timeout: 2s
+    override: false
+
+  # Filter processor - Remove healthcheck and internal endpoints
+  filter:
+    error_mode: ignore
+    traces:
+      span:
+        # Remove OAuth2 healthcheck
+        - 'attributes["http.target"] == "/oauth2/auth"'
+        - 'attributes["http.route"] == "/oauth2/auth"'
+        - 'IsMatch(attributes["http.url"], ".*oauth2.*")'
+
+        # Remove Coroot healthcheck
+        - 'IsMatch(attributes["http.target"], ".*/health.*")'
+        - 'IsMatch(attributes["http.target"], ".*/healthz.*")'
+        - 'IsMatch(attributes["http.target"], ".*/alive.*")'
+        - 'IsMatch(attributes["http.target"], ".*trueprofit-apm-http.*")'
+        - 'IsMatch(attributes["http.url"], ".*coroot.*")'
+
+        # Remove Kubernetes probes
+        - 'attributes["http.target"] == "/livez"'
+        - 'attributes["http.target"] == "/readyz"'
+        - 'attributes["user_agent.original"] == "kube-probe/*"'
+
+    metrics:
+      metric:
+        # Remove health metrics
+        - 'name == "http_server_duration" and attributes["http.route"] == "/health"'
+
+  # Resource processor - Add metadata and filter namespace
+  resource:
+    attributes:
+      # Add environment tags
+      - key: deployment.environment
+        value: production
+        action: insert
+      - key: service.namespace
+        value: firegroup
+        action: insert
+
+  # Attributes processor - Filter by namespace from resource attributes
+  attributes/filter_namespace:
+    actions:
+      # Filter by namespace from resource attributes
+      - key: k8s.namespace.name
+        action: extract
+        pattern: ^(dagster|production)$  # Regex pattern for allowed namespaces
+
+  # Transform processor - Advanced filtering (optional)
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        conditions:
+          # Drop spans with duration < 10ms (noise reduction)
+          - duration < 10000000  # nanoseconds
+        statements:
+          - drop()
+      - context: span
+        conditions:
+          # Drop internal service mesh traffic
+          - attributes["http.target"] == "/metrics"
+        statements:
+          - drop()
+
+  # Batch processor - Optimize for throughput
+  batch:
+    send_batch_size: 2048      # Increased batch size
+    timeout: 5s                # Reduced timeout
+    send_batch_max_size: 4096  # Max batch size
+
+exporters:
+  # StarRocks exporter configuration
+  starrocks:
+    # ===== REQUIRED CONFIG =====
+    # Using environment variables for security
+    endpoint: ${STARROCKS_ENDPOINT:localhost:9030}        # StarRocks MySQL endpoint
+    username: ${STARROCKS_USERNAME:root}                  # Username for connection
+    password: ${STARROCKS_PASSWORD}                       # Password - REQUIRED env var
+    database: ${STARROCKS_DATABASE:otel}                  # Database name
+
+    # ===== OPTIONAL CONFIG =====
+    # Table names
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+
+    # Schema management
+    create_schema: true             # Automatically create database and tables
+
+    # Connection pool
+    max_open_conns: 30
+    max_idle_conns: 15
+    conn_max_lifetime: 15m
+
+    # Connection parameters (optional)
+    connection_params:
+      timeout: "10s"
+      readTimeout: "30s"
+
+    # Metrics tables
+    metrics_tables:
+      gauge:
+        name: "otel_metrics_gauge"
+      sum:
+        name: "otel_metrics_sum"
+      summary:
+        name: "otel_metrics_summary"
+      histogram:
+        name: "otel_metrics_histogram"
+      exponential_histogram:
+        name: "otel_metrics_exponential_histogram"
+
+    # Timeout
+    timeout: 5s
+
+    # Retry configuration
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+    # Queue configuration
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+
+  # Debug exporter - only used when troubleshooting
+  debug:
+    verbosity: basic  # Reduced verbosity from detailed -> basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions:
+    - health_check
+
+  pipelines:
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter          # 1. Memory protection
+        - resourcedetection       # 2. Detect environment
+        - filter                  # 3. Filter healthcheck URLs
+        - resource                # 4. Add custom attributes
+        - transform               # 5. Advanced filtering
+        - batch                   # 6. Batching (must be last)
+      exporters:
+        - starrocks
+        # - debug  # Uncomment when debugging
+
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - filter                  # Filter health metrics
+        - resource
+        - batch
+      exporters:
+        - starrocks
+        # - debug
+
+    logs:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - resource
+        - batch
+      exporters:
+        - starrocks
+        # - debug
